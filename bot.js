@@ -520,3 +520,40 @@ async function fetchAndUpdateUsernames() {
 
 // Schedule the task to run every hour
 cron.schedule('0 * * * *', fetchAndUpdateUsernames);
+
+// Function to fetch all orders and update the bot and sheets
+async function fetchAllOrdersAndUpdate() {
+    try {
+        console.log('Fetching orders from Wix...');
+        const response = await axios.get('https://www.wixapis.com/pricing-plans/v2/orders', {
+            headers: {
+                'Authorization': `Bearer ${process.env.WIX_API_KEY}`,
+                'wix-account-id': process.env.WIX_ACCOUNT_ID,
+                'wix-site-id': process.env.WIX_SITE_ID
+            }
+        });
+
+        const orders = response.data.orders || [];
+        for (const order of orders) {
+            const memberId = order.buyer?.memberId;
+            if (!memberId) continue;
+
+            const profile = await fetchSubscriberProfile(memberId);
+            if (!profile) continue;
+
+            const newTelegramUsername = extractTelegramUsername(profile);
+            if (newTelegramUsername) {
+                // Update Google Sheets
+                await updateSheetWithNewUsername(memberId, newTelegramUsername);
+
+                // Update bot cache
+                updateUserCache(memberId, { telegramUsername: newTelegramUsername });
+            }
+        }
+    } catch (error) {
+        console.error('Error fetching or updating orders:', error);
+    }
+}
+
+// Schedule the task to run every hour
+cron.schedule('0 * * * *', fetchAllOrdersAndUpdate);
